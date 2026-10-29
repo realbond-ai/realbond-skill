@@ -8,6 +8,7 @@ import {
 } from "viem";
 import { bsc } from "viem/chains";
 import launchpadAbi from "./abi/launchpad.json" with { type: "json" };
+import registryAbi from "./abi/registry.json" with { type: "json" };
 import taxTokenAbi from "./abi/taxToken.json" with { type: "json" };
 
 /** The read surface the CLI needs; a viem PublicClient satisfies it, tests pass a scripted transport. */
@@ -46,6 +47,12 @@ type LaunchTarget = { client: ChainClient; launchpad: Address; id: bigint };
 
 export function readLaunchpad(target: Omit<LaunchTarget, "id">, functionName: string, args: readonly unknown[] = []) {
   return target.client.readContract({ address: target.launchpad, abi: launchpadAbi, functionName, args });
+}
+
+/** Whether `account` may buy: the registry the launchpad itself checks, so LAUNCHPAD_REGISTRY is not needed. */
+export async function readIsEligible(client: ChainClient, launchpad: Address, account: Address): Promise<boolean> {
+  const registry = (await readLaunchpad({ client, launchpad }, "registry")) as Address;
+  return (await client.readContract({ address: registry, abi: registryAbi, functionName: "isEligible", args: [account] })) as boolean;
 }
 
 export function readTaxToken(client: ChainClient, token: Address, functionName: string, args: readonly unknown[] = []) {

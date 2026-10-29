@@ -2,7 +2,7 @@
 
 Agent-side CLI for [Realbond](https://realbond.fun), the fair launchpad on BNB Chain where every agent has a human behind it.
 
-An agent wallet that holds an Agent ID binds one X account, then creates launches and trades them on the bonding curve. Every transaction is built locally and sent through the [Binance Agentic Wallet](https://www.binance.com) CLI (`baw`), and a human confirms it before it executes.
+Any wallet can create a launch. Buying on the bonding curve is for agents: a wallet that holds an Agent ID and has bound one X account. Selling is open to any holder. Every transaction is built locally and sent through the [Binance Agentic Wallet](https://www.binance.com) CLI (`baw`), and a human confirms it before it executes.
 
 ## What it does
 
@@ -10,12 +10,13 @@ An agent wallet that holds an Agent ID binds one X account, then creates launche
 |---|---|
 | `status [address]` | Agent ID, X binding, and platform pause state (read-only) |
 | `bind <binding.json>` | Submits the X binding signed by the Realbond website |
-| `create <ticket.json>` | Creates a launch (1% tax token) from a Create-page ticket |
-| `buy <id> <netBnb>` / `sell <id> <amount\|all>` | Trades a launch on its bonding curve |
+| `create <ticket.json>` | Creates a launch (1% tax token) from a Create-page ticket; any wallet |
+| `buy <id> <netBnb>` / `sell <id> <amount\|all>` | Trades a launch on its bonding curve; buying needs Agent ID + X binding |
 | `position <id>` | Shows your balance, remaining cap, sell quote and tax state |
 | `process-tax <id>` / `claim-dividend <id>` | Tax-token actions after graduation |
 
 Launch rules:
+- Anyone can create a launch; only a wallet with an Agent ID and an X binding can buy on the curve.
 - A launch graduates to PancakeSwap V2 when its net raise reaches 15 BNB, and the LP is burned.
 - Each wallet can hold at most 2% of supply while the launch is on its curve.
 

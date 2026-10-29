@@ -1,9 +1,10 @@
 ---
 name: realbond
 description: |
-  Use when an Agent ID holder wants to bind its X account on Realbond from a website-signed binding.json, create a
-  launch (1% tax token), buy or sell a launch on its bonding curve, process tax or claim tax-token
-  dividends (paid in the token), or check its own binding or position on BSC. Every transaction goes through
+  Use when a wallet wants to create a launch on Realbond (1% tax token; open to any wallet), when an Agent ID holder
+  wants to bind its X account from a website-signed binding.json, buy (needs Agent ID + X binding) or sell a launch on
+  its bonding curve, process tax or claim tax-token dividends (paid in the token), or check its binding or position on
+  BSC. Every transaction goes through
   the Binance Agentic Wallet (`baw contract-call`) with a human confirmation before execution.
 metadata:
   author: realbond-ai
@@ -56,8 +57,8 @@ v2 contract addresses (BSC mainnet): `LAUNCHPAD_REGISTRY=0xc94D593B1162BB93e9595
 |---|---|---|
 | `status [address]` | Agent ID `balanceOf`/`handleOf`, registry `isEligible`/`bindingOf`, launchpad and registry `pausedFlags` | read-only JSON; `binding` shows `isBound`, `xId`, `isPublic`, `followerTier`, `followerThresholdAtBinding`, `isBlueVerified` (X verified), `boundAt`, and `screenName` only for public bindings; `paused` shows `launch`, `trade`, `bind` (see "Platform pause") |
 | `bind <binding.json>` | registry `bind(claim, signature)` | see "Binding" below; gas cap `400000` |
-| `create <ticket.json>` | launchpad `createLaunch(name, symbol, metaCid, taxed)` | file from the Create page; name ≤ 64, symbol ≤ 16, metaCid ≤ 128 UTF-8 bytes, `taxed` must be `true` (an untaxed launch reverts `UntaxedLaunchDisabled`); a v1 ticket with `salt` is refused |
-| `buy <id> <netBnb> [--min-tokens <wei>]` | launchpad `buy(id, minTokens)` payable | gas cap `7000000`; see "Trading" |
+| `create <ticket.json>` | launchpad `createLaunch(name, symbol, metaCid, taxed)` | open to any wallet (no Agent ID or X binding needed); file from the Create page; name ≤ 64, symbol ≤ 16, metaCid ≤ 128 UTF-8 bytes, `taxed` must be `true` (an untaxed launch reverts `UntaxedLaunchDisabled`); a v1 ticket with `salt` is refused |
+| `buy <id> <netBnb> [--min-tokens <wei>]` | launchpad `buy(id, minTokens)` payable | needs Agent ID + X binding (`NOT_ELIGIBLE` otherwise); gas cap `7000000`; see "Trading" |
 | `sell <id> <amount\|all> [--min-bnb <wei>]` | launchpad `sell(id, tokens, minBnb)` | `amount` in tokens (decimal, 18 decimals); `all` reads the wallet balance; no approve needed |
 | `position <id>` | launch, token and tax-token reads | read-only JSON for `AGENT_WALLET`: `status`, `token`, `taxed`, `balance`, `walletCap`/`remainingCap`/`quoteSellAll` (Live only), `tax: {withdrawableDividend, accruedTax}` (tax tokens; both in token wei) |
 | `process-tax <id>` | tax token `processTax()` | tax tokens only; refused locally when `accruedTax` is 0 |
@@ -104,8 +105,13 @@ Each launch mints 1,000,000,000 tokens into the launchpad. Bound agents buy with
 that brings the net raise to **15 BNB** graduates the launch in the same transaction: the remaining tokens and
 15 BNB go into a PancakeSwap V2 pair whose LP is burned. Before graduation tokens cannot be transferred, each
 wallet (creator included) may hold at most 20,000,000 tokens (2%), counted on its current balance so selling frees
-room, and the curve charges 1% on buys and sells. Buying needs a binding; selling back to the curve is open to any
-holder and is the only exit before graduation.
+room, and the curve charges 1% on buys and sells. Any wallet may create a launch, but buying needs an eligible
+wallet (an Agent ID held and an X binding); selling back to the curve is open to any holder and is the only exit
+before graduation. A creator without a binding cannot buy its own launch.
+
+- Before every buy the CLI reads `registry()` from the launchpad and `isEligible(AGENT_WALLET)` (needs `RPC_URL`).
+  An ineligible wallet exits with `NOT_ELIGIBLE: ... buying requires an Agent ID and an X binding` and nothing is
+  sent; run `status` to see which part is missing. The contract itself reverts `NotEligible` on such a buy.
 
 - `buy <id> <netBnb>` takes the **net** BNB for the curve; the CLI sends `value = ceil(net * 10100 / 10000)`
   (1% fee on top), e.g. `buy 1 0.01` sends `0.0101` BNB. Every buy first calls

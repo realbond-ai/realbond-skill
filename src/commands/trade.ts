@@ -1,6 +1,6 @@
 import { formatEther, type Address } from "viem";
 import { encodeBuy, encodeSell } from "../calldata.ts";
-import { describeReadFailure, readLaunch, readLaunchpad, readTokenBalance, type ChainClient } from "../chain.ts";
+import { describeReadFailure, readIsEligible, readLaunch, readLaunchpad, readTokenBalance, type ChainClient } from "../chain.ts";
 import { grossForNet, minOutForQuote } from "../fee.ts";
 import type { Command } from "./parse.ts";
 import { notify, requireClient, requireTarget, requireWallet, type TxRequest, type WriteContext } from "./context.ts";
@@ -44,8 +44,28 @@ async function resolveMinTokens(cmd: BuyCommand, gross: bigint, ctx: WriteContex
   return cmd.minTokens;
 }
 
+/**
+ * Buying is the one gated action (anyone may create a launch, any holder may sell): an ineligible wallet would
+ * only revert with NotEligible, so stop before quoting. The registry comes from the launchpad itself.
+ */
+async function assertCanBuy(ctx: WriteContext): Promise<void> {
+  const reads = readsFor(ctx, "buy");
+  let isEligible: boolean;
+  try {
+    isEligible = await readIsEligible(reads.client, reads.launchpad, reads.wallet);
+  } catch (error) {
+    throw describeReadFailure("registry.isEligible for AGENT_WALLET", error);
+  }
+  if (!isEligible) {
+    throw new Error(
+      `NOT_ELIGIBLE: ${reads.wallet} cannot buy; buying requires an Agent ID and an X binding (run status). Creating a launch and selling do not.`,
+    );
+  }
+}
+
 export async function buildBuyTx(cmd: BuyCommand, ctx: WriteContext): Promise<TxRequest> {
   const launchpad = requireTarget(ctx.targets.launchpad, "LAUNCHPAD_ADDRESS");
+  await assertCanBuy(ctx);
   const value = grossForNet(cmd.netWei);
   const minTokens = await resolveMinTokens(cmd, value, ctx);
   return { to: launchpad, data: encodeBuy(cmd.id, minTokens), value, gasLimit: BUY_GAS_LIMIT };

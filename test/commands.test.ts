@@ -12,6 +12,7 @@ const CREATOR: `0x${string}` = "0x4444444444444444444444444444444444444444";
 const PLAIN_TOKEN = "0x5555555555555555555555555555555555555555";
 const TAX_TOKEN = "0x6666666666666666666666666666666666666666";
 const ZERO = "0x0000000000000000000000000000000000000000";
+const REGISTRY = "0x2222222222222222222222222222222222222222";
 const QUOTED_TOKENS = 12_000_000n * 10n ** 18n;
 
 function launch(taxed: boolean, status = 0) {
@@ -23,6 +24,8 @@ function launch(taxed: boolean, status = 0) {
 
 // launch 0 is plain, launch 1 is taxed; nextId = 2.
 const BASE_HANDLERS: Record<string, Handler> = {
+  registry: REGISTRY,
+  isEligible: true,
   nextId: 2n,
   launches: ([id]: readonly unknown[]) => launch(id === 1n),
 };
@@ -45,7 +48,22 @@ describe("buy", () => {
     expect(tx.gasLimit).toBe(7_000_000n);
     expect(BUY_GAS_LIMIT).toBe(7_000_000n);
     expect(args(tx.data)).toEqual([1n, (QUOTED_TOKENS * 99n) / 100n]);
-    expect(calls[0]?.args).toEqual([1n, WALLET, parseEther("0.0101")]);
+    expect(calls.map((call) => call.functionName)).toEqual(["registry", "isEligible", "quoteBuy"]);
+    expect(calls[1]).toMatchObject({ to: REGISTRY, args: [WALLET] });
+    expect(calls[2]?.args).toEqual([1n, WALLET, parseEther("0.0101")]);
+  });
+
+  it("stopsAWalletWithoutAgentIdOrXBindingBeforeQuoting", async () => {
+    const { ctx, calls } = context({ isEligible: false });
+    await expect(buildTx(parseCommand(["buy", "1", "0.01", "--min-tokens", "0"]), ctx)).rejects.toThrow(
+      /^NOT_ELIGIBLE: .* buying requires an Agent ID and an X binding/,
+    );
+    expect(calls.map((call) => call.functionName)).not.toContain("quoteBuy");
+  });
+
+  it("reportsAFailedEligibilityRead", async () => {
+    const { ctx } = context({ isEligible: () => { throw new Error("rpc down"); } });
+    await expect(buildTx(parseCommand(["buy", "1", "0.01"]), ctx)).rejects.toThrow(/registry\.isEligible for AGENT_WALLET failed/);
   });
 
   it("warnsWhenPartOfTheValueWillBeRefunded", async () => {
@@ -57,8 +75,8 @@ describe("buy", () => {
   it("explicitMinTokensStillQuotesFirstAndOnlyOverridesTheBound", async () => {
     const { ctx, calls, notes } = context({ quoteBuy: [QUOTED_TOKENS, 0n, parseEther("0.2")] });
     const tx = await buildTx(parseCommand(["buy", "2", "0.05", "--min-tokens", "123"]), ctx);
-    expect(calls.map((call) => call.functionName)).toEqual(["quoteBuy"]);
-    expect(calls[0]?.args).toEqual([2n, WALLET, parseEther("0.0505")]);
+    expect(calls.map((call) => call.functionName)).toEqual(["registry", "isEligible", "quoteBuy"]);
+    expect(calls[2]?.args).toEqual([2n, WALLET, parseEther("0.0505")]);
     expect(args(tx.data)).toEqual([2n, 123n]);
     expect(tx.gasLimit).toBe(BUY_GAS_LIMIT);
     expect(notes.join("\n")).toMatch(/0\.2 BNB .* will be refunded/);

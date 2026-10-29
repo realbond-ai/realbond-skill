@@ -22,7 +22,7 @@ const TAXED_LAUNCH = {
 
 // The bits of the two contracts are disjoint, so one pausedFlags answer serves both addresses.
 function context(handlers: Record<string, Handler>) {
-  const rpc = fakeRpc({ nextId: 2n, launches: TAXED_LAUNCH, ...handlers });
+  const rpc = fakeRpc({ nextId: 2n, launches: TAXED_LAUNCH, registry: REGISTRY, isEligible: true, ...handlers });
   const ctx: WriteContext = { targets: { launchpad: LAUNCHPAD, registry: REGISTRY }, wallet: WALLET, client: rpc.client };
   const baw = { exec: vi.fn(async () => "{}"), confirm: vi.fn(async () => true) };
   return { ctx, baw, calls: rpc.calls };
@@ -68,6 +68,27 @@ describe("writes refuse a paused feature before baw", () => {
     await expect(runWrite(parseCommand(["create", TICKET, "--dry-run"]), { ...ctx, client: undefined }, baw)).rejects.toThrow(
       /create needs RPC_URL/,
     );
+  });
+});
+
+describe("eligibility gates buying only", () => {
+  it("createProceedsForAWalletWithoutAgentIdOrXBinding", async () => {
+    const { ctx, calls } = context({ pausedFlags: 0, isEligible: false });
+    const out = JSON.parse(await runWrite(parseCommand(["create", TICKET, "--dry-run"]), ctx));
+    expect(out).toMatchObject({ to: LAUNCHPAD, value: "0" });
+    expect(calls.map((call) => call.functionName)).toEqual(["pausedFlags"]);
+  });
+
+  it("buyStopsAWalletWithoutAgentIdOrXBindingBeforeBaw", async () => {
+    const { ctx, baw } = context({ pausedFlags: 0, isEligible: false });
+    await expect(runWrite(parseCommand(["buy", "1", "0.01", "--min-tokens", "0"]), ctx, baw)).rejects.toThrow(/^NOT_ELIGIBLE/);
+    expect(baw.exec).not.toHaveBeenCalled();
+  });
+
+  it("sellIsOpenToAnyHolder", async () => {
+    const { ctx, calls } = context({ pausedFlags: 0, isEligible: false });
+    await runWrite(parseCommand(["sell", "1", "5", "--min-bnb", "0", "--dry-run"]), ctx);
+    expect(calls.map((call) => call.functionName)).not.toContain("isEligible");
   });
 });
 
